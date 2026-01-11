@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Wallet Connector</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Crypto Wallet Connector</h1>
+        <p class="subtitle">Connect your Ethereum wallet to get started</p>
+        
+        <div class="wallet-status" id="walletStatus">
+            <div class="status-disconnected">
+                <p style="font-size: 1.2rem; margin-bottom: 10px;">⚡ Wallet Not Connected</p>
+                <p style="font-size: 0.9rem;">Click the button below to connect</p>
+            </div>
+        </div>
+
+        <div class="wallet-info" id="walletInfo" style="display: none;">
+            <div class="total-balance-card" id="totalBalanceCard" style="display: none;">
+                <div class="total-balance-label">Total Portfolio Value</div>
+                <div class="total-balance-value" id="totalBalanceValue">$0.00</div>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Status:</span>
+                <span class="info-value status-connected">✓ Connected</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Address:</span>
+                <span class="info-value address" id="walletAddress">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">ETH Balance:</span>
+                <span class="info-value balance" id="walletBalance">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Network:</span>
+                <span class="info-value" id="walletNetwork">-</span>
+            </div>
+        </div>
+
+        <div class="tokens-section" id="tokensSection" style="display: none;">
+            <h2 style="text-align: left; margin: 20px 0 10px 0; font-size: 1.3rem; color: #333;">💰 Your Tokens (<span id="tokenCount">0</span>)</h2>
+            <div id="tokensList" class="tokens-list">
+                <div class="loading-tokens">Loading tokens...</div>
+            </div>
+        </div>
+
+        <button class="btn" id="connectBtn" onclick="connectWallet()">
+            Connect Wallet
+        </button>
+
+        <div class="action-buttons" id="actionButtons" style="display: none;">
+            <button class="btn btn-deposit" onclick="showDepositModal()">
+                💰 Deposit / Receive
+            </button>
+            <button class="btn btn-send" onclick="showSendModal()">
+                📤 Send Tokens
+            </button>
+        </div>
+
+        <button class="btn btn-disconnect" id="disconnectBtn" onclick="disconnectWallet()" style="display: none;">
+            Disconnect Wallet
+        </button>
+
+        <div class="error-message" id="errorMessage"></div>
+    </div>
+
+    <!-- Deposit Modal -->
+    <div class="modal" id="depositModal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDepositModal()">&times;</span>
+            <h2>💰 Receive Tokens</h2>
+            <p class="modal-subtitle">Send tokens to this address</p>
+            <div class="address-display">
+                <div class="qr-code-container" id="qrCodeContainer"></div>
+                <div class="address-text" id="depositAddress"></div>
+                <button class="btn btn-copy" onclick="copyDepositAddress()">📋 Copy Address</button>
+            </div>
+            <div class="modal-note">
+                <p>⚠️ Only send tokens on the same network you're connected to.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send Modal -->
+    <div class="modal" id="sendModal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSendModal()">&times;</span>
+            <h2>📤 Send Tokens</h2>
+            <form id="sendForm" onsubmit="handleSend(event)">
+                <div class="form-group">
+                    <label for="tokenSelect">Select Token:</label>
+                    <select id="tokenSelect" class="form-input" required onchange="updateTokenBalance()">
+                        <option value="">Choose a token...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="recipientAddress">Recipient Address:</label>
+                    <input type="text" id="recipientAddress" class="form-input" 
+                           placeholder="0x..." required pattern="^0x[a-fA-F0-9]{40}$">
+                </div>
+                <div class="form-group">
+                    <label for="amount">Amount:</label>
+                    <div class="amount-input-group">
+                        <input type="number" id="amount" class="form-input" 
+                               placeholder="0.0" step="0.000001" required min="0">
+                        <button type="button" class="btn-max" onclick="setMaxAmount()">MAX</button>
+                    </div>
+                    <div class="balance-info" id="balanceInfo"></div>
+                </div>
+                <div class="form-group">
+                    <div class="transaction-info" id="transactionInfo" style="display: none;"></div>
+                </div>
+                <button type="submit" class="btn btn-send-submit" id="sendSubmitBtn">
+                    Send Transaction
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
