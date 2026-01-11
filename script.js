@@ -385,12 +385,12 @@ async function connectEVMWallet() {
         return;
     }
 
-    // Detect wallet provider - try multiple times for mobile
+    // Detect wallet provider - try multiple times (works for both mobile and desktop)
     let walletProvider = detectWalletProvider();
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    // On mobile, wallets often inject with significant delay - retry up to 10 times (3 seconds total)
-    if (!walletProvider && isMobile) {
+    // Wallets often inject with delay - retry up to 10 times (3 seconds total) for both mobile and desktop
+    if (!walletProvider) {
         for (let i = 0; i < 10; i++) {
             await new Promise(resolve => setTimeout(resolve, 300));
             walletProvider = detectWalletProvider();
@@ -411,7 +411,8 @@ async function connectEVMWallet() {
                 showError('No wallet detected. To connect on mobile:\n\n📱 IMPORTANT: You must open this page IN your wallet app\'s browser, not in Chrome/Safari.\n\n1. Open your wallet app (MetaMask, Trust Wallet, etc.)\n2. Use the browser feature inside the wallet app\n3. Navigate to this page\n\nOr share this page URL and open it from your wallet app.');
             }
         } else {
-            showError('No Ethereum wallet detected. Please install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension.');
+            // Desktop - same retry logic applied
+            showError('No Ethereum wallet detected. Please:\n\n1. Install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension\n2. Refresh the page after installing\n3. Ensure your wallet extension is enabled in your browser');
         }
         return;
     }
