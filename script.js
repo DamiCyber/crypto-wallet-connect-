@@ -2,6 +2,85 @@ let provider = null;
 let signer = null;
 let userAddress = null;
 let walletTokens = []; // Store tokens for send functionality
+let selectedChainId = 1; // Default to Ethereum Mainnet
+let isSolana = false; // Flag to track if we're on Solana
+let solanaConnection = null; // Solana connection object
+let solanaWallet = null; // Solana wallet adapter
+
+// Chain configurations
+const CHAIN_CONFIG = {
+    1: {
+        name: 'Ethereum Mainnet',
+        nativeCurrency: { symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://eth.llamarpc.com', 'https://rpc.ankr.com/eth'],
+        blockExplorerUrls: ['https://etherscan.io'],
+        chainId: '0x1'
+    },
+    137: {
+        name: 'Polygon',
+        nativeCurrency: { symbol: 'MATIC', decimals: 18 },
+        rpcUrls: ['https://polygon.llamarpc.com', 'https://rpc.ankr.com/polygon'],
+        blockExplorerUrls: ['https://polygonscan.com'],
+        chainId: '0x89'
+    },
+    56: {
+        name: 'BNB Smart Chain',
+        nativeCurrency: { symbol: 'BNB', decimals: 18 },
+        rpcUrls: ['https://bsc-dataseed.binance.org', 'https://rpc.ankr.com/bsc'],
+        blockExplorerUrls: ['https://bscscan.com'],
+        chainId: '0x38'
+    },
+    42161: {
+        name: 'Arbitrum One',
+        nativeCurrency: { symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
+        blockExplorerUrls: ['https://arbiscan.io'],
+        chainId: '0xa4b1'
+    },
+    10: {
+        name: 'Optimism',
+        nativeCurrency: { symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
+        blockExplorerUrls: ['https://optimistic.etherscan.io'],
+        chainId: '0xa'
+    },
+    43114: {
+        name: 'Avalanche C-Chain',
+        nativeCurrency: { symbol: 'AVAX', decimals: 18 },
+        rpcUrls: ['https://api.avax.network/ext/bc/C/rpc', 'https://rpc.ankr.com/avalanche'],
+        blockExplorerUrls: ['https://snowtrace.io'],
+        chainId: '0xa86a'
+    },
+    250: {
+        name: 'Fantom',
+        nativeCurrency: { symbol: 'FTM', decimals: 18 },
+        rpcUrls: ['https://rpc.ftm.tools', 'https://rpc.ankr.com/fantom'],
+        blockExplorerUrls: ['https://ftmscan.com'],
+        chainId: '0xfa'
+    },
+    5: {
+        name: 'Goerli Testnet',
+        nativeCurrency: { symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://rpc.ankr.com/eth_goerli', 'https://goerli.blockpi.network/v1/rpc/public'],
+        blockExplorerUrls: ['https://goerli.etherscan.io'],
+        chainId: '0x5'
+    },
+    11155111: {
+        name: 'Sepolia Testnet',
+        nativeCurrency: { symbol: 'ETH', decimals: 18 },
+        rpcUrls: ['https://rpc.ankr.com/eth_sepolia', 'https://sepolia.blockpi.network/v1/rpc/public'],
+        blockExplorerUrls: ['https://sepolia.etherscan.io'],
+        chainId: '0xaa36a7'
+    },
+    'solana': {
+        name: 'Solana',
+        nativeCurrency: { symbol: 'SOL', decimals: 9 },
+        rpcUrls: ['https://api.mainnet-beta.solana.com'],
+        blockExplorerUrls: ['https://solscan.io'],
+        chainId: 'solana',
+        isSolana: true
+    }
+};
 
 // Wait for ethers.js to load
 function waitForEthers() {
@@ -28,6 +107,20 @@ function waitForEthers() {
 window.addEventListener('load', async () => {
     try {
         await waitForEthers();
+        // Get saved chain selection or default to Ethereum
+        const savedChain = localStorage.getItem('selectedChainId');
+        if (savedChain) {
+            if (savedChain === 'solana') {
+                selectedChainId = 'solana';
+                isSolana = true;
+                document.getElementById('chainSelect').value = 'solana';
+            } else if (CHAIN_CONFIG[parseInt(savedChain)]) {
+                selectedChainId = parseInt(savedChain);
+                isSolana = false;
+                document.getElementById('chainSelect').value = savedChain;
+            }
+        }
+        
         if (typeof window.ethereum !== 'undefined') {
             try {
                 const accounts = await window.ethereum.request({ method: 'eth_accounts' });
@@ -44,6 +137,36 @@ window.addEventListener('load', async () => {
     }
 });
 
+// Handle chain selection change
+function onChainChange() {
+    const chainSelect = document.getElementById('chainSelect');
+    const value = chainSelect.value;
+    
+    // Check if Solana
+    if (value === 'solana') {
+        selectedChainId = 'solana';
+        isSolana = true;
+    } else {
+        selectedChainId = parseInt(value);
+        isSolana = false;
+    }
+    
+    localStorage.setItem('selectedChainId', selectedChainId);
+    
+    // If wallet is connected, switch chain
+    if (userAddress) {
+        if (isSolana && solanaWallet) {
+            // Already on Solana, just reload
+            updateWalletInfo();
+        } else if (!isSolana && provider) {
+            switchChain();
+        } else {
+            // Need to reconnect
+            disconnectWallet();
+        }
+    }
+}
+
 // Listen for account changes
 if (typeof window.ethereum !== 'undefined') {
     window.ethereum.on('accountsChanged', (accounts) => {
@@ -59,17 +182,102 @@ if (typeof window.ethereum !== 'undefined') {
     });
 }
 
+// Switch to selected chain
+async function switchChain() {
+    if (typeof window.ethereum === 'undefined') return;
+    
+    const chainConfig = CHAIN_CONFIG[selectedChainId];
+    if (!chainConfig) {
+        showError('Selected chain not supported.');
+        return;
+    }
+    
+    try {
+        // Try to switch to the chain
+        await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: chainConfig.chainId }]
+        });
+        
+        // Reload wallet info after chain switch
+        if (userAddress) {
+            await updateWalletInfo();
+        }
+    } catch (switchError) {
+        // This error code indicates that the chain has not been added to MetaMask
+        if (switchError.code === 4902) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{
+                        chainId: chainConfig.chainId,
+                        chainName: chainConfig.name,
+                        nativeCurrency: chainConfig.nativeCurrency,
+                        rpcUrls: chainConfig.rpcUrls,
+                        blockExplorerUrls: chainConfig.blockExplorerUrls
+                    }]
+                });
+                
+                // Reload wallet info after adding chain
+                if (userAddress) {
+                    await updateWalletInfo();
+                }
+            } catch (addError) {
+                console.error('Error adding chain:', addError);
+                showError('Failed to add chain to wallet. Please add it manually.');
+            }
+        } else {
+            console.error('Error switching chain:', switchError);
+            showError('Failed to switch chain. Please try again.');
+        }
+    }
+}
+
 async function connectWallet() {
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const walletStatus = document.getElementById('walletStatus');
     const walletInfo = document.getElementById('walletInfo');
     const errorMessage = document.getElementById('errorMessage');
+    const chainSelect = document.getElementById('chainSelect');
 
     // Hide error message
     errorMessage.classList.remove('show');
     errorMessage.textContent = '';
 
+    try {
+        connectBtn.disabled = true;
+        chainSelect.disabled = true;
+        connectBtn.innerHTML = '<span class="loading"></span> Connecting...';
+
+        // Get selected chain
+        const value = chainSelect.value;
+        if (value === 'solana') {
+            selectedChainId = 'solana';
+            isSolana = true;
+            await connectSolanaWallet();
+        } else {
+            selectedChainId = parseInt(value);
+            isSolana = false;
+            await connectEVMWallet();
+        }
+        
+        localStorage.setItem('selectedChainId', selectedChainId);
+
+    } catch (error) {
+        console.error('Error connecting wallet:', error);
+        if (error.code === 4001) {
+            showError('Connection rejected. Please approve the connection request.');
+        } else {
+            showError('Failed to connect wallet: ' + error.message);
+        }
+        connectBtn.disabled = false;
+        chainSelect.disabled = false;
+        connectBtn.textContent = 'Connect Wallet';
+    }
+}
+
+async function connectEVMWallet() {
     // Check if ethers.js is loaded
     if (typeof ethers === 'undefined') {
         showError('Ethers.js library is not loaded. Please refresh the page.');
@@ -82,29 +290,105 @@ async function connectWallet() {
         return;
     }
 
+    // Switch to selected chain
+    await switchChain();
+
+    // Request account access
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+    // Create provider and signer
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    signer = provider.getSigner();
+    userAddress = await signer.getAddress();
+
+    // Update wallet info
+    await updateWalletInfo();
+}
+
+async function connectSolanaWallet() {
+    // Check if Solana Web3 is loaded
+    if (typeof window.solana === 'undefined' && typeof window.phantom === 'undefined') {
+        showError('Solana wallet (Phantom, Solflare, etc.) is not installed. Please install a Solana wallet to continue.');
+        return;
+    }
+
+    // Try Phantom first, then other wallets
+    const wallet = window.phantom?.solana || window.solana;
+    
+    if (!wallet || !wallet.isPhantom) {
+        showError('Phantom wallet is not installed. Please install Phantom wallet.');
+        return;
+    }
+
     try {
-        connectBtn.disabled = true;
-        connectBtn.innerHTML = '<span class="loading"></span> Connecting...';
+        // Connect to Phantom
+        const response = await wallet.connect();
+        solanaWallet = wallet;
+        userAddress = response.publicKey.toString();
+        
+        // Create Solana connection
+        if (typeof solanaWeb3 !== 'undefined') {
+            solanaConnection = new solanaWeb3.Connection(
+                'https://api.mainnet-beta.solana.com',
+                'confirmed'
+            );
+        } else if (typeof window.solanaWeb3 !== 'undefined') {
+            solanaConnection = new window.solanaWeb3.Connection(
+                'https://api.mainnet-beta.solana.com',
+                'confirmed'
+            );
+        } else {
+            showError('Solana Web3 library is not loaded. Please refresh the page.');
+            return;
+        }
 
-        // Request account access
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        // Update wallet info
+        await updateWalletInfo();
+    } catch (error) {
+        console.error('Error connecting Solana wallet:', error);
+        throw error;
+    }
+}
 
-        // Create provider and signer
-        provider = new ethers.providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
-        userAddress = await signer.getAddress();
+async function updateWalletInfo() {
+    if (!userAddress) return;
+    
+    const walletStatus = document.getElementById('walletStatus');
+    const walletInfo = document.getElementById('walletInfo');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const connectBtn = document.getElementById('connectBtn');
+    const chainSelect = document.getElementById('chainSelect');
+    
+    try {
+        let networkName, nativeSymbol, formattedBalance, chainId;
+        
+        if (isSolana && solanaConnection && solanaWallet) {
+            // Solana wallet info
+            const chainConfig = CHAIN_CONFIG['solana'];
+            networkName = chainConfig.name;
+            nativeSymbol = chainConfig.nativeCurrency.symbol;
+            
+            // Get SOL balance
+            const publicKey = new solanaWeb3.PublicKey(userAddress);
+            const balance = await solanaConnection.getBalance(publicKey);
+            const balanceInSol = balance / solanaWeb3.LAMPORTS_PER_SOL;
+            formattedBalance = parseFloat(balanceInSol).toFixed(4);
+            chainId = 'solana';
+        } else if (provider) {
+            // EVM wallet info
+            const network = await provider.getNetwork();
+            const chainConfig = CHAIN_CONFIG[network.chainId] || CHAIN_CONFIG[selectedChainId];
+            networkName = chainConfig ? chainConfig.name : `Chain ${network.chainId}`;
+            nativeSymbol = chainConfig ? chainConfig.nativeCurrency.symbol : 'ETH';
+            chainId = network.chainId;
 
-        // Get network info
-        const network = await provider.getNetwork();
-        const networkName = network.name === 'homestead' ? 'Mainnet' : 
-                           network.name === 'goerli' ? 'Goerli Testnet' :
-                           network.name === 'sepolia' ? 'Sepolia Testnet' :
-                           network.name;
-
-        // Get balance
-        const balance = await provider.getBalance(userAddress);
-        const balanceInEth = ethers.utils.formatEther(balance);
-        const formattedBalance = parseFloat(balanceInEth).toFixed(4);
+            // Get balance
+            const balance = await provider.getBalance(userAddress);
+            const balanceFormatted = ethers.utils.formatEther(balance);
+            formattedBalance = parseFloat(balanceFormatted).toFixed(4);
+        } else {
+            return;
+        }
 
         // Update UI
         walletStatus.innerHTML = `
@@ -114,38 +398,37 @@ async function connectWallet() {
         `;
         walletInfo.style.display = 'block';
         document.getElementById('walletAddress').textContent = userAddress;
-        document.getElementById('walletBalance').textContent = `${formattedBalance} ETH`;
+        document.getElementById('walletBalance').textContent = `${formattedBalance} ${nativeSymbol}`;
         
-        const networkBadge = network.name === 'homestead' ? 'network-mainnet' :
-                            network.name.includes('test') || network.name.includes('goerli') || network.name.includes('sepolia') ? 'network-testnet' :
+        const networkBadge = chainId === 1 ? 'network-mainnet' :
+                            chainId === 5 || chainId === 11155111 ? 'network-testnet' :
+                            chainId === 'solana' ? 'network-mainnet' :
                             'network-unknown';
         document.getElementById('walletNetwork').innerHTML = `
-            <span class="network-badge ${networkBadge}">${networkName} (Chain ID: ${network.chainId})</span>
+            <span class="network-badge ${networkBadge}">${networkName}${chainId !== 'solana' ? ` (Chain ID: ${chainId})` : ''}</span>
         `;
 
         connectBtn.style.display = 'none';
         disconnectBtn.style.display = 'block';
         document.getElementById('actionButtons').style.display = 'flex';
+        chainSelect.disabled = false;
 
         // Load token balances and total value
         await loadAllTokensAndBalance();
 
     } catch (error) {
-        console.error('Error connecting wallet:', error);
-        if (error.code === 4001) {
-            showError('Connection rejected. Please approve the connection request.');
-        } else {
-            showError('Failed to connect wallet: ' + error.message);
-        }
-        connectBtn.disabled = false;
-        connectBtn.textContent = 'Connect Wallet';
+        console.error('Error updating wallet info:', error);
+        showError('Failed to update wallet information.');
     }
 }
 
 async function disconnectWallet() {
     try {
-        // Revoke permissions from wallet provider (MetaMask, etc.)
-        if (typeof window.ethereum !== 'undefined' && window.ethereum.request) {
+        if (isSolana && solanaWallet) {
+            // Disconnect Solana wallet
+            await solanaWallet.disconnect();
+        } else if (typeof window.ethereum !== 'undefined' && window.ethereum.request) {
+            // Revoke permissions from wallet provider (MetaMask, etc.)
             try {
                 // Try to revoke permissions (EIP-2255)
                 await window.ethereum.request({
@@ -178,6 +461,9 @@ async function disconnectWallet() {
     signer = null;
     userAddress = null;
     walletTokens = [];
+    solanaConnection = null;
+    solanaWallet = null;
+    isSolana = false;
 
     // Update UI
     const walletStatus = document.getElementById('walletStatus');
@@ -185,6 +471,7 @@ async function disconnectWallet() {
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const errorMessage = document.getElementById('errorMessage');
+    const chainSelect = document.getElementById('chainSelect');
 
     walletStatus.innerHTML = `
         <div class="status-disconnected">
@@ -200,6 +487,7 @@ async function disconnectWallet() {
     connectBtn.disabled = false;
     connectBtn.textContent = 'Connect Wallet';
     disconnectBtn.style.display = 'none';
+    chainSelect.disabled = false;
     errorMessage.classList.remove('show');
     
     // Close any open modals
@@ -296,26 +584,46 @@ async function getTokenPrice(tokenAddress, symbol) {
     }
 }
 
-// Get ETH price
-async function getETHPrice() {
-    if (tokenPriceCache['ETH']) {
-        return tokenPriceCache['ETH'];
+// Get native token price
+async function getNativeTokenPrice(chainId) {
+    const chainConfig = CHAIN_CONFIG[chainId] || CHAIN_CONFIG[1];
+    const nativeSymbol = chainConfig.nativeCurrency.symbol;
+    const cacheKey = `${nativeSymbol}_${chainId}`;
+    
+    if (tokenPriceCache[cacheKey]) {
+        return tokenPriceCache[cacheKey];
     }
     
     try {
-        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+        // Map chain native tokens to CoinGecko IDs
+        const coinGeckoIds = {
+            'ETH': 'ethereum',
+            'MATIC': 'matic-network',
+            'BNB': 'binancecoin',
+            'AVAX': 'avalanche-2',
+            'FTM': 'fantom',
+            'SOL': 'solana'
+        };
+        
+        const coinId = coinGeckoIds[nativeSymbol] || 'ethereum';
+        const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
         if (response.ok) {
             const data = await response.json();
-            const price = data.ethereum?.usd;
+            const price = data[coinId]?.usd;
             if (price) {
-                tokenPriceCache['ETH'] = price;
+                tokenPriceCache[cacheKey] = price;
                 return price;
             }
         }
     } catch (error) {
-        console.error('Error fetching ETH price:', error);
+        console.error(`Error fetching ${nativeSymbol} price:`, error);
     }
     return null;
+}
+
+// Get ETH price (kept for backward compatibility)
+async function getETHPrice() {
+    return getNativeTokenPrice(1);
 }
 
 // Expanded list of popular tokens to check
@@ -375,7 +683,15 @@ async function discoverTokens(address, chainId) {
 }
 
 async function loadAllTokensAndBalance() {
-    if (!provider || !userAddress) return;
+    if (!userAddress) return;
+    
+    // Handle Solana separately
+    if (isSolana && solanaConnection) {
+        await loadSolanaTokensAndBalance();
+        return;
+    }
+    
+    if (!provider) return;
 
     const tokensSection = document.getElementById('tokensSection');
     const tokensList = document.getElementById('tokensList');
@@ -391,11 +707,11 @@ async function loadAllTokensAndBalance() {
         const network = await provider.getNetwork();
         const chainId = network.chainId;
         
-        // Get ETH balance and price
-        const ethBalance = await provider.getBalance(userAddress);
-        const ethBalanceFormatted = parseFloat(ethers.utils.formatEther(ethBalance));
-        const ethPrice = await getETHPrice();
-        const ethValue = ethPrice ? ethBalanceFormatted * ethPrice : 0;
+        // Get native token balance and price
+        const nativeBalance = await provider.getBalance(userAddress);
+        const nativeBalanceFormatted = parseFloat(ethers.utils.formatEther(nativeBalance));
+        const nativePrice = await getNativeTokenPrice(chainId);
+        const nativeValue = nativePrice ? nativeBalanceFormatted * nativePrice : 0;
         
         // Discover tokens in wallet
         let tokenAddresses = [];
@@ -471,16 +787,20 @@ async function loadAllTokensAndBalance() {
         const results = await Promise.all(tokenPromises);
         const validTokens = results.filter(token => token !== null);
         
-        // Add ETH to the list
-        if (ethBalanceFormatted > 0) {
+        // Add native token to the list
+        const chainConfig = CHAIN_CONFIG[chainId] || CHAIN_CONFIG[1];
+        const nativeSymbol = chainConfig.nativeCurrency.symbol;
+        const nativeName = chainConfig.name.split(' ')[0]; // Get first word (Ethereum, Polygon, etc.)
+        
+        if (nativeBalanceFormatted > 0) {
             validTokens.push({
-                symbol: 'ETH',
-                name: 'Ethereum',
-                balance: ethBalanceFormatted,
+                symbol: nativeSymbol,
+                name: nativeName,
+                balance: nativeBalanceFormatted,
                 address: 'native',
-                decimals: 18,
-                price: ethPrice,
-                usdValue: ethValue
+                decimals: chainConfig.nativeCurrency.decimals,
+                price: nativePrice,
+                usdValue: nativeValue
             });
         }
         
@@ -519,7 +839,8 @@ async function loadAllTokensAndBalance() {
             // Format address display
             let addressDisplay = '';
             if (token.address === 'native') {
-                addressDisplay = '<span class="token-address-native">Native ETH</span>';
+                const chainConfig = CHAIN_CONFIG[chainId] || CHAIN_CONFIG[1];
+                addressDisplay = `<span class="token-address-native">Native ${chainConfig.nativeCurrency.symbol}</span>`;
             } else {
                 const addressShort = `${token.address.substring(0, 6)}...${token.address.substring(38)}`;
                 addressDisplay = `<span class="token-address" data-address="${token.address}" title="Click to copy full address: ${token.address}">${addressShort}</span>`;
@@ -565,6 +886,99 @@ async function loadAllTokensAndBalance() {
         
     } catch (error) {
         console.error('Error loading tokens and balance:', error);
+        tokensList.innerHTML = '<div class="no-tokens">Error loading tokens. Please try again.</div>';
+        totalBalanceValue.textContent = '$0.00';
+    }
+}
+
+async function loadSolanaTokensAndBalance() {
+    if (!solanaConnection || !userAddress) return;
+
+    const tokensSection = document.getElementById('tokensSection');
+    const tokensList = document.getElementById('tokensList');
+    const totalBalanceCard = document.getElementById('totalBalanceCard');
+    const totalBalanceValue = document.getElementById('totalBalanceValue');
+    
+    tokensSection.style.display = 'block';
+    totalBalanceCard.style.display = 'block';
+    tokensList.innerHTML = '<div class="loading-tokens">Loading SOL balance...</div>';
+    totalBalanceValue.textContent = 'Loading...';
+
+    try {
+        const SolanaWeb3 = solanaWeb3 || window.solanaWeb3;
+        const publicKey = new SolanaWeb3.PublicKey(userAddress);
+        
+        // Get SOL balance
+        const balance = await solanaConnection.getBalance(publicKey);
+        const balanceInSol = balance / SolanaWeb3.LAMPORTS_PER_SOL;
+        const solPrice = await getNativeTokenPrice('solana');
+        const solValue = solPrice ? balanceInSol * solPrice : 0;
+        
+        const validTokens = [];
+        
+        // Add SOL to the list
+        if (balanceInSol > 0) {
+            validTokens.push({
+                symbol: 'SOL',
+                name: 'Solana',
+                balance: balanceInSol,
+                address: 'native',
+                decimals: 9,
+                price: solPrice,
+                usdValue: solValue
+            });
+        }
+        
+        // Calculate total portfolio value
+        let totalValue = validTokens.reduce((sum, token) => sum + (token.usdValue || 0), 0);
+        
+        // Update total balance display
+        totalBalanceValue.textContent = `$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        
+        // Update token count
+        document.getElementById('tokenCount').textContent = validTokens.length;
+        
+        // Store tokens for send functionality
+        walletTokens = validTokens;
+        
+        // Display tokens
+        if (validTokens.length === 0) {
+            tokensList.innerHTML = '<div class="no-tokens">No tokens found in your wallet.</div>';
+            return;
+        }
+        
+        // Display tokens
+        tokensList.innerHTML = validTokens.map(token => {
+            const balanceStr = token.balance.toFixed(6).replace(/\.?0+$/, '');
+            const usdValueStr = token.usdValue 
+                ? `$${token.usdValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : 'Price unavailable';
+            
+            let addressDisplay = '';
+            if (token.address === 'native') {
+                addressDisplay = '<span class="token-address-native">Native SOL</span>';
+            } else {
+                const addressShort = `${token.address.substring(0, 6)}...${token.address.substring(token.address.length - 4)}`;
+                addressDisplay = `<span class="token-address" data-address="${token.address}" title="Click to copy full address: ${token.address}">${addressShort}</span>`;
+            }
+            
+            return `
+                <div class="token-item">
+                    <div class="token-info">
+                        <div class="token-symbol">${token.symbol}</div>
+                        <div class="token-name">${token.name}</div>
+                        <div class="token-address-container">${addressDisplay}</div>
+                    </div>
+                    <div class="token-balance-container">
+                        <div class="token-balance">${balanceStr}</div>
+                        <div class="token-usd-value">${usdValueStr}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Error loading Solana tokens and balance:', error);
         tokensList.innerHTML = '<div class="no-tokens">Error loading tokens. Please try again.</div>';
         totalBalanceValue.textContent = '$0.00';
     }
@@ -642,7 +1056,13 @@ window.onclick = function(event) {
 
 // Send Modal Functions
 function showSendModal() {
-    if (!userAddress || !signer) {
+    if (!userAddress) {
+        showError('Please connect your wallet first.');
+        return;
+    }
+    
+    // For Solana, we don't need signer
+    if (!isSolana && !signer) {
         showError('Please connect your wallet first.');
         return;
     }
@@ -706,7 +1126,18 @@ function setMaxAmount() {
 async function handleSend(event) {
     event.preventDefault();
     
-    if (!signer || !userAddress) {
+    if (!userAddress) {
+        showError('Wallet not connected.');
+        return;
+    }
+    
+    // Handle Solana separately
+    if (isSolana && solanaWallet) {
+        await handleSolanaSend(event);
+        return;
+    }
+    
+    if (!signer) {
         showError('Wallet not connected.');
         return;
     }
@@ -752,7 +1183,9 @@ async function handleSend(event) {
         let tx;
         
         if (token.address === 'native') {
-            // Send ETH
+            // Send native token (ETH, MATIC, BNB, etc.)
+            const network = await provider.getNetwork();
+            const chainConfig = CHAIN_CONFIG[network.chainId] || CHAIN_CONFIG[1];
             tx = await signer.sendTransaction({
                 to: recipientAddress,
                 value: ethers.utils.parseEther(amount)
@@ -770,12 +1203,8 @@ async function handleSend(event) {
         
         // Get network for explorer link
         const network = await provider.getNetwork();
-        let explorerUrl = 'https://etherscan.io';
-        if (network.chainId === 5) {
-            explorerUrl = 'https://goerli.etherscan.io';
-        } else if (network.chainId === 11155111) {
-            explorerUrl = 'https://sepolia.etherscan.io';
-        }
+        const chainConfig = CHAIN_CONFIG[network.chainId] || CHAIN_CONFIG[1];
+        const explorerUrl = chainConfig.blockExplorerUrls[0] || 'https://etherscan.io';
         
         transactionInfo.className = 'transaction-info pending';
         transactionInfo.innerHTML = `⏳ Transaction submitted! Hash: <a href="${explorerUrl}/tx/${tx.hash}" target="_blank" class="transaction-link">${tx.hash.substring(0, 20)}...</a>`;
@@ -783,8 +1212,15 @@ async function handleSend(event) {
         // Wait for confirmation
         const receipt = await tx.wait();
         
+        const explorerName = chainConfig.name.includes('Ethereum') ? 'Etherscan' : 
+                            chainConfig.name.includes('Polygon') ? 'Polygonscan' :
+                            chainConfig.name.includes('BNB') ? 'BscScan' :
+                            chainConfig.name.includes('Arbitrum') ? 'Arbiscan' :
+                            chainConfig.name.includes('Optimism') ? 'Etherscan' :
+                            chainConfig.name.includes('Avalanche') ? 'Snowtrace' :
+                            chainConfig.name.includes('Fantom') ? 'FtmScan' : 'Explorer';
         transactionInfo.className = 'transaction-info success';
-        transactionInfo.innerHTML = `✅ Transaction confirmed! <a href="${explorerUrl}/tx/${tx.hash}" target="_blank" class="transaction-link">View on Etherscan</a>`;
+        transactionInfo.innerHTML = `✅ Transaction confirmed! <a href="${explorerUrl}/tx/${tx.hash}" target="_blank" class="transaction-link">View on ${explorerName}</a>`;
         
         // Refresh balances
         setTimeout(async () => {
@@ -801,6 +1237,103 @@ async function handleSend(event) {
         transactionInfo.className = 'transaction-info error';
         
         if (error.code === 4001) {
+            transactionInfo.innerHTML = '❌ Transaction rejected by user.';
+        } else if (error.message) {
+            transactionInfo.innerHTML = `❌ Error: ${error.message}`;
+        } else {
+            transactionInfo.innerHTML = '❌ Transaction failed. Please try again.';
+        }
+    } finally {
+        sendSubmitBtn.disabled = false;
+        sendSubmitBtn.textContent = 'Send Transaction';
+    }
+}
+
+async function handleSolanaSend(event) {
+    event.preventDefault();
+    
+    const tokenSelect = document.getElementById('tokenSelect');
+    const recipientAddress = document.getElementById('recipientAddress').value.trim();
+    const amount = document.getElementById('amount').value;
+    const sendSubmitBtn = document.getElementById('sendSubmitBtn');
+    const transactionInfo = document.getElementById('transactionInfo');
+    
+    const selectedIndex = tokenSelect.value;
+    if (selectedIndex === '' || !walletTokens[selectedIndex]) {
+        showError('Please select a token.');
+        return;
+    }
+    
+    const token = walletTokens[selectedIndex];
+    const amountFloat = parseFloat(amount);
+    
+    // Validation
+    if (amountFloat <= 0) {
+        showError('Amount must be greater than 0.');
+        return;
+    }
+    
+    if (amountFloat > parseFloat(token.balance)) {
+        showError('Insufficient balance.');
+        return;
+    }
+    
+    // Validate Solana address (base58, 32-44 characters)
+    try {
+        new solanaWeb3.PublicKey(recipientAddress);
+    } catch (e) {
+        showError('Invalid Solana recipient address.');
+        return;
+    }
+    
+    try {
+        sendSubmitBtn.disabled = true;
+        sendSubmitBtn.innerHTML = '<span class="loading"></span> Sending...';
+        transactionInfo.style.display = 'block';
+        transactionInfo.className = 'transaction-info pending';
+        transactionInfo.innerHTML = '⏳ Waiting for transaction confirmation...';
+        
+        if (token.address === 'native') {
+            // Send SOL
+            const SolanaWeb3 = solanaWeb3 || window.solanaWeb3;
+            const recipientPubkey = new SolanaWeb3.PublicKey(recipientAddress);
+            const senderPubkey = new SolanaWeb3.PublicKey(userAddress);
+            const lamports = amountFloat * SolanaWeb3.LAMPORTS_PER_SOL;
+            
+            const transaction = new SolanaWeb3.Transaction().add(
+                SolanaWeb3.SystemProgram.transfer({
+                    fromPubkey: senderPubkey,
+                    toPubkey: recipientPubkey,
+                    lamports: lamports
+                })
+            );
+            
+            const signature = await solanaWallet.sendTransaction(transaction, solanaConnection);
+            await solanaConnection.confirmTransaction(signature, 'confirmed');
+            
+            const explorerUrl = 'https://solscan.io';
+            transactionInfo.className = 'transaction-info success';
+            transactionInfo.innerHTML = `✅ Transaction confirmed! <a href="${explorerUrl}/tx/${signature}" target="_blank" class="transaction-link">View on Solscan</a>`;
+        } else {
+            showError('SPL token transfers not yet supported.');
+            return;
+        }
+        
+        // Refresh balances
+        setTimeout(async () => {
+            await loadAllTokensAndBalance();
+        }, 2000);
+        
+        // Reset form after 3 seconds
+        setTimeout(() => {
+            closeSendModal();
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Solana send error:', error);
+        transactionInfo.className = 'transaction-info error';
+        
+        if (error.code === 4001 || error.message?.includes('User rejected')) {
             transactionInfo.innerHTML = '❌ Transaction rejected by user.';
         } else if (error.message) {
             transactionInfo.innerHTML = `❌ Error: ${error.message}`;

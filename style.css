@@ -48,6 +48,48 @@ h1 {
     font-size: 0.9rem;
 }
 
+.chain-selector-container {
+    margin-bottom: 25px;
+    text-align: left;
+}
+
+.chain-select-label {
+    display: block;
+    color: #333;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.chain-select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 1rem;
+    background: white;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.chain-select:hover {
+    border-color: #667eea;
+}
+
+.chain-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.chain-select:disabled {
+    background: #f5f5f5;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
 .wallet-status {
     background: #f8f9fa;
     border-radius: 12px;
