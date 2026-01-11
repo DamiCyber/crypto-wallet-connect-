@@ -121,9 +121,10 @@ window.addEventListener('load', async () => {
             }
         }
         
-        if (typeof window.ethereum !== 'undefined') {
+        const walletProvider = detectWalletProvider();
+        if (walletProvider) {
             try {
-                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                const accounts = await walletProvider.request({ method: 'eth_accounts' });
                 if (accounts.length > 0) {
                     await connectWallet();
                 }
@@ -167,24 +168,34 @@ function onChainChange() {
     }
 }
 
-// Listen for account changes
-if (typeof window.ethereum !== 'undefined') {
-    window.ethereum.on('accountsChanged', (accounts) => {
-        if (accounts.length === 0) {
-            disconnectWallet();
-        } else {
-            connectWallet();
-        }
-    });
+// Listen for account changes - check dynamically
+function setupWalletListeners() {
+    const walletProvider = detectWalletProvider();
+    if (walletProvider && walletProvider.on) {
+        walletProvider.on('accountsChanged', (accounts) => {
+            if (accounts.length === 0) {
+                disconnectWallet();
+            } else {
+                connectWallet();
+            }
+        });
 
-    window.ethereum.on('chainChanged', () => {
-        window.location.reload();
-    });
+        walletProvider.on('chainChanged', () => {
+            window.location.reload();
+        });
+    }
 }
+
+// Setup listeners when page loads
+window.addEventListener('load', () => {
+    // Wait a bit for wallets to inject
+    setTimeout(setupWalletListeners, 1000);
+});
 
 // Switch to selected chain
 async function switchChain() {
-    if (typeof window.ethereum === 'undefined') return;
+    const walletProvider = detectWalletProvider();
+    if (!walletProvider) return;
     
     const chainConfig = CHAIN_CONFIG[selectedChainId];
     if (!chainConfig) {
@@ -194,7 +205,7 @@ async function switchChain() {
     
     try {
         // Try to switch to the chain
-        await window.ethereum.request({
+        await walletProvider.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: chainConfig.chainId }]
         });
@@ -204,10 +215,10 @@ async function switchChain() {
             await updateWalletInfo();
         }
     } catch (switchError) {
-        // This error code indicates that the chain has not been added to MetaMask
+        // This error code indicates that the chain has not been added to the wallet
         if (switchError.code === 4902) {
             try {
-                await window.ethereum.request({
+                await walletProvider.request({
                     method: 'wallet_addEthereumChain',
                     params: [{
                         chainId: chainConfig.chainId,
@@ -277,6 +288,31 @@ async function connectWallet() {
     }
 }
 
+// Detect available wallet providers
+function detectWalletProvider() {
+    // Check for various wallet providers
+    if (typeof window.ethereum !== 'undefined') {
+        return window.ethereum;
+    }
+    
+    // Check for Trust Wallet
+    if (window.trustwallet) {
+        return window.trustwallet;
+    }
+    
+    // Check for Coinbase Wallet
+    if (window.coinbaseWalletExtension) {
+        return window.coinbaseWalletExtension;
+    }
+    
+    // Check for other common providers
+    if (window.web3 && window.web3.currentProvider) {
+        return window.web3.currentProvider;
+    }
+    
+    return null;
+}
+
 async function connectEVMWallet() {
     // Check if ethers.js is loaded
     if (typeof ethers === 'undefined') {
@@ -284,9 +320,18 @@ async function connectEVMWallet() {
         return;
     }
 
-    // Check if MetaMask is installed
-    if (typeof window.ethereum === 'undefined') {
-        showError('MetaMask or another Ethereum wallet is not installed. Please install MetaMask to continue.');
+    // Detect wallet provider
+    const walletProvider = detectWalletProvider();
+    
+    if (!walletProvider) {
+        // Check if we're on mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            showError('No Ethereum wallet detected. Please open this page in a wallet browser (MetaMask, Trust Wallet, Coinbase Wallet, etc.) or install a wallet extension.');
+        } else {
+            showError('No Ethereum wallet detected. Please install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension.');
+        }
         return;
     }
 
@@ -294,10 +339,10 @@ async function connectEVMWallet() {
     await switchChain();
 
     // Request account access
-    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    await walletProvider.request({ method: 'eth_requestAccounts' });
 
     // Create provider and signer
-    provider = new ethers.providers.Web3Provider(window.ethereum);
+    provider = new ethers.providers.Web3Provider(walletProvider);
     signer = provider.getSigner();
     userAddress = await signer.getAddress();
 
