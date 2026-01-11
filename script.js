@@ -427,30 +427,8 @@ async function disconnectWallet() {
         if (isSolana && solanaWallet) {
             // Disconnect Solana wallet
             await solanaWallet.disconnect();
-        } else if (typeof window.ethereum !== 'undefined' && window.ethereum.request) {
-            // Revoke permissions from wallet provider (MetaMask, etc.)
-            try {
-                // Try to revoke permissions (EIP-2255)
-                await window.ethereum.request({
-                    method: 'wallet_revokePermissions',
-                    params: [{
-                        eth_accounts: {}
-                    }]
-                });
-            } catch (error) {
-                // Some wallets don't support wallet_revokePermissions
-                // Try alternative method: request with empty accounts
-                try {
-                    // For wallets that support it, we can try to disconnect
-                    if (window.ethereum.disconnect) {
-                        await window.ethereum.disconnect();
-                    }
-                } catch (e) {
-                    // If neither method works, just clear local state
-                    console.log('Wallet provider does not support programmatic disconnect');
-                }
-            }
         }
+        // For EVM wallets, we just clear local state without revoking permissions
     } catch (error) {
         console.error('Error during wallet disconnect:', error);
         // Continue with local state cleanup even if provider disconnect fails
@@ -739,7 +717,7 @@ async function loadAllTokensAndBalance() {
             try {
                 const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
                 
-                // Try to get balance with timeout and error handling
+                // Try to get balance with error handling
                 let balance;
                 try {
                     balance = await Promise.race([
@@ -1327,13 +1305,12 @@ async function handleSolanaSend(event) {
         
         if (token.address === 'native') {
             // Send SOL
-            const SolanaWeb3 = solanaWeb3 || window.solanaWeb3;
-            const recipientPubkey = new SolanaWeb3.PublicKey(recipientAddress);
-            const senderPubkey = new SolanaWeb3.PublicKey(userAddress);
-            const lamports = amountFloat * SolanaWeb3.LAMPORTS_PER_SOL;
+            const recipientPubkey = new solanaWeb3.PublicKey(recipientAddress);
+            const senderPubkey = new solanaWeb3.PublicKey(userAddress);
+            const lamports = amountFloat * solanaWeb3.LAMPORTS_PER_SOL;
             
-            const transaction = new SolanaWeb3.Transaction().add(
-                SolanaWeb3.SystemProgram.transfer({
+            const transaction = new solanaWeb3.Transaction().add(
+                solanaWeb3.SystemProgram.transfer({
                     fromPubkey: senderPubkey,
                     toPubkey: recipientPubkey,
                     lamports: lamports
