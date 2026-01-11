@@ -646,3 +646,316 @@ h1 {
 .transaction-link:hover {
     text-decoration: underline;
 }
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        padding: 20px;
+        max-width: 100%;
+        border-radius: 15px;
+    }
+
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    .subtitle {
+        font-size: 0.85rem;
+        margin-bottom: 20px;
+    }
+
+    .wallet-status {
+        padding: 15px;
+        min-height: 80px;
+    }
+
+    .info-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+        padding: 12px;
+    }
+
+    .info-value {
+        font-size: 0.85rem;
+        word-break: break-all;
+    }
+
+    .address {
+        font-size: 0.75rem;
+    }
+
+    .balance {
+        font-size: 1rem;
+    }
+
+    .btn {
+        padding: 12px 20px;
+        font-size: 0.9rem;
+    }
+
+    .action-buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .action-buttons .btn {
+        width: 100%;
+        margin-top: 0;
+    }
+
+    .total-balance-card {
+        padding: 20px;
+        margin-bottom: 15px;
+    }
+
+    .total-balance-value {
+        font-size: 2rem;
+    }
+
+    .tokens-list {
+        max-height: 300px;
+    }
+
+    .token-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .token-balance-container {
+        width: 100%;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .token-symbol {
+        font-size: 1rem;
+    }
+
+    .token-name {
+        font-size: 0.8rem;
+    }
+
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+        padding: 20px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-content h2 {
+        font-size: 1.3rem;
+        padding-right: 30px;
+    }
+
+    .close {
+        right: 15px;
+        top: 15px;
+        font-size: 24px;
+    }
+
+    .address-display {
+        padding: 15px;
+    }
+
+    .qr-code-container {
+        padding: 10px;
+    }
+
+    .qr-code-container canvas {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .address-text {
+        font-size: 0.8rem;
+        padding: 8px;
+    }
+
+    .form-input {
+        padding: 10px;
+        font-size: 0.9rem;
+    }
+
+    .amount-input-group {
+        flex-direction: column;
+    }
+
+    .btn-max {
+        width: 100%;
+        padding: 10px;
+    }
+
+    .chain-select {
+        padding: 10px 12px;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    body {
+        padding: 5px;
+    }
+
+    .container {
+        padding: 15px;
+        border-radius: 10px;
+    }
+
+    h1 {
+        font-size: 1.3rem;
+        margin-bottom: 8px;
+    }
+
+    .subtitle {
+        font-size: 0.8rem;
+        margin-bottom: 15px;
+    }
+
+    .wallet-status {
+        padding: 12px;
+        min-height: 70px;
+    }
+
+    .wallet-status p {
+        font-size: 1rem !important;
+    }
+
+    .info-item {
+        padding: 10px;
+        margin: 8px 0;
+    }
+
+    .info-label {
+        font-size: 0.85rem;
+    }
+
+    .info-value {
+        font-size: 0.8rem;
+    }
+
+    .total-balance-card {
+        padding: 15px;
+    }
+
+    .total-balance-label {
+        font-size: 0.8rem;
+    }
+
+    .total-balance-value {
+        font-size: 1.8rem;
+    }
+
+    .token-item {
+        padding: 10px;
+    }
+
+    .token-symbol {
+        font-size: 0.95rem;
+    }
+
+    .token-balance {
+        font-size: 0.9rem;
+    }
+
+    .token-usd-value {
+        font-size: 0.75rem;
+    }
+
+    .modal-content {
+        width: 100%;
+        margin: 5% auto;
+        padding: 15px;
+        border-radius: 15px;
+    }
+
+    .modal-content h2 {
+        font-size: 1.2rem;
+    }
+
+    .modal-subtitle {
+        font-size: 0.85rem;
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-group label {
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+    }
+
+    .btn {
+        padding: 12px 15px;
+        font-size: 0.85rem;
+    }
+
+    .network-badge {
+        font-size: 0.7rem;
+        padding: 4px 10px;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .container {
+        max-width: 700px;
+        padding: 35px;
+    }
+
+    .modal-content {
+        max-width: 600px;
+    }
+}
+
+@media (min-width: 1025px) {
+    .container {
+        max-width: 650px;
+    }
+}
+
+/* Touch-friendly improvements for mobile */
+@media (hover: none) and (pointer: coarse) {
+    .btn {
+        min-height: 44px;
+    }
+
+    .token-address {
+        min-height: 32px;
+        padding: 6px 10px;
+    }
+
+    .close {
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .form-input {
+        min-height: 44px;
+    }
+
+    .btn-max {
+        min-height: 44px;
+    }
+}
+
+/* Landscape orientation adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+    .tokens-list {
+        max-height: 200px;
+    }
+
+    .modal-content {
+        max-height: 85vh;
+    }
+}

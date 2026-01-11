@@ -738,7 +738,18 @@ async function loadAllTokensAndBalance() {
         const tokenPromises = allTokenAddresses.map(async (tokenAddress) => {
             try {
                 const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-                const balance = await tokenContract.balanceOf(userAddress);
+                
+                // Try to get balance with timeout and error handling
+                let balance;
+                try {
+                    balance = await Promise.race([
+                        tokenContract.balanceOf(userAddress),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+                    ]);
+                } catch (balanceError) {
+                    // If balanceOf fails, this is not a valid token or doesn't exist on this chain
+                    return null;
+                }
                 
                 if (balance.isZero()) {
                     return null;
@@ -754,9 +765,18 @@ async function loadAllTokensAndBalance() {
                     decimals = cachedInfo.decimals;
                 } else {
                     try {
-                        symbol = await tokenContract.symbol();
-                        name = await tokenContract.name();
-                        decimals = await tokenContract.decimals();
+                        // Try to get token info with timeout
+                        const [symbolResult, nameResult, decimalsResult] = await Promise.race([
+                            Promise.all([
+                                tokenContract.symbol(),
+                                tokenContract.name(),
+                                tokenContract.decimals()
+                            ]),
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+                        ]);
+                        symbol = symbolResult;
+                        name = nameResult;
+                        decimals = decimalsResult;
                     } catch (e) {
                         // If contract calls fail, skip
                         return null;
@@ -779,7 +799,19 @@ async function loadAllTokensAndBalance() {
                     usdValue
                 };
             } catch (error) {
-                console.error(`Error fetching token ${tokenAddress}:`, error);
+                // Suppress expected errors (CALL_EXCEPTION, execution reverted, etc.)
+                // These are normal when checking many token addresses
+                const isExpectedError = 
+                    error.code === 'CALL_EXCEPTION' || 
+                    error.reason === 'execution reverted' ||
+                    error.message?.includes('revert') ||
+                    error.message?.includes('CALL_EXCEPTION') ||
+                    error.message === 'Timeout';
+                
+                if (!isExpectedError) {
+                    // Only log unexpected errors
+                    console.error(`Unexpected error fetching token ${tokenAddress}:`, error);
+                }
                 return null;
             }
         });
