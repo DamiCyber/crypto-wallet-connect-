@@ -647,6 +647,47 @@ h1 {
     text-decoration: underline;
 }
 
+/* Wallet Selection Modal Styles */
+.wallet-options {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.wallet-option-btn {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 20px;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    width: 100%;
+}
+
+.wallet-option-btn:hover {
+    border-color: #667eea;
+    background: #f8f9ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.wallet-option-icon {
+    font-size: 2rem;
+    width: 50px;
+    text-align: center;
+}
+
+.wallet-option-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     body {

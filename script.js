@@ -121,6 +121,9 @@ window.addEventListener('load', async () => {
             }
         }
         
+        // Check for wallet connection after redirect from wallet app
+        checkWalletConnectionAfterRedirect();
+        
         // Wait a bit for mobile wallets to inject (they often inject with delay)
         await new Promise(resolve => setTimeout(resolve, 1500));
         
@@ -289,6 +292,18 @@ async function connectWallet() {
 
     } catch (error) {
         console.error('Error connecting wallet:', error);
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            console.error('[Mobile Connection Error]', {
+                error: error.message,
+                code: error.code,
+                stack: error.stack,
+                userAgent: navigator.userAgent,
+                walletProvider: detectWalletProvider() ? 'detected' : 'not detected'
+            });
+        }
+        
         if (error.code === 4001) {
             showError('Connection rejected. Please approve the connection request.');
         } else {
@@ -406,13 +421,33 @@ async function connectEVMWallet() {
         
         if (isMobile) {
             if (inWalletBrowser) {
-                showError('Wallet detected but connection failed. Please try:\n\n1. Refresh the page\n2. Ensure your wallet is unlocked\n3. Check wallet permissions');
+                const errorMsg = 'Wallet detected but connection failed. Please try:\n\n1. Refresh the page\n2. Ensure your wallet is unlocked\n3. Check wallet permissions';
+                console.error('[Mobile Wallet Error]', errorMsg);
+                console.error('[Debug Info]', {
+                    userAgent: navigator.userAgent,
+                    ethereum: typeof window.ethereum,
+                    trustwallet: typeof window.trustwallet,
+                    coinbaseWalletExtension: typeof window.coinbaseWalletExtension,
+                    web3: typeof window.web3
+                });
+                showError(errorMsg);
             } else {
-                showError('No wallet detected. To connect on mobile:\n\n📱 IMPORTANT: You must open this page IN your wallet app\'s browser, not in Chrome/Safari.\n\n1. Open your wallet app (MetaMask, Trust Wallet, etc.)\n2. Use the browser feature inside the wallet app\n3. Navigate to this page\n\nOr share this page URL and open it from your wallet app.');
+                // Show wallet selection modal for mobile (deep link to wallet apps)
+                console.log('[Mobile Wallet] No wallet detected, showing wallet selection');
+                showWalletSelectModal();
             }
         } else {
             // Desktop - same retry logic applied
-            showError('No Ethereum wallet detected. Please:\n\n1. Install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension\n2. Refresh the page after installing\n3. Ensure your wallet extension is enabled in your browser');
+            const errorMsg = 'No Ethereum wallet detected. Please:\n\n1. Install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension\n2. Refresh the page after installing\n3. Ensure your wallet extension is enabled in your browser';
+            console.error('[Desktop Wallet Error]', errorMsg);
+            console.error('[Debug Info]', {
+                userAgent: navigator.userAgent,
+                ethereum: typeof window.ethereum,
+                trustwallet: typeof window.trustwallet,
+                coinbaseWalletExtension: typeof window.coinbaseWalletExtension,
+                web3: typeof window.web3
+            });
+            showError(errorMsg);
         }
         return;
     }
@@ -1183,11 +1218,15 @@ function copyDepositAddress() {
 window.onclick = function(event) {
     const depositModal = document.getElementById('depositModal');
     const sendModal = document.getElementById('sendModal');
+    const walletSelectModal = document.getElementById('walletSelectModal');
     if (event.target === depositModal) {
         closeDepositModal();
     }
     if (event.target === sendModal) {
         closeSendModal();
+    }
+    if (event.target === walletSelectModal) {
+        closeWalletSelectModal();
     }
 }
 
@@ -1479,5 +1518,100 @@ async function handleSolanaSend(event) {
     } finally {
         sendSubmitBtn.disabled = false;
         sendSubmitBtn.textContent = 'Send Transaction';
+    }
+}
+
+// Mobile Wallet Deep Linking Functions
+function showWalletSelectModal() {
+    const modal = document.getElementById('walletSelectModal');
+    if (modal) {
+        modal.style.display = 'block';
+    } else {
+        // Fallback: show error with instructions
+        showError('No wallet detected. Please open this page in your wallet app\'s browser or install a wallet extension.');
+    }
+}
+
+function closeWalletSelectModal() {
+    const modal = document.getElementById('walletSelectModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function openWalletApp(walletType) {
+    const currentUrl = window.location.href;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+    
+    let deepLink = '';
+    
+    // Generate deep link based on wallet type
+    switch(walletType) {
+        case 'metamask':
+            // MetaMask universal link
+            deepLink = `https://metamask.app.link/dapp?url=${encodeURIComponent(currentUrl)}`;
+            break;
+            
+        case 'trustwallet':
+            // Trust Wallet deep link
+            deepLink = `trust://wc?uri=${encodeURIComponent(currentUrl)}`;
+            break;
+            
+        case 'coinbase':
+            // Coinbase Wallet deep link
+            deepLink = `cbwallet://wc?uri=${encodeURIComponent(currentUrl)}`;
+            break;
+    }
+    
+    console.log('[Mobile Wallet] Opening wallet app:', walletType, deepLink);
+    console.error('[Mobile Wallet Debug]', {
+        walletType,
+        deepLink,
+        currentUrl,
+        isIOS,
+        isAndroid,
+        userAgent: navigator.userAgent
+    });
+    
+    // Store the current URL for redirect back
+    localStorage.setItem('pendingWalletConnection', 'true');
+    localStorage.setItem('walletType', walletType);
+    
+    // Try to open the deep link
+    if (deepLink) {
+        // Try to open the app
+        window.location.href = deepLink;
+        
+        // Fallback: if app doesn't open, show instructions
+        setTimeout(() => {
+            // If we're still on the page after 2 seconds, the app might not be installed
+            if (document.hasFocus()) {
+                closeWalletSelectModal();
+                const walletName = walletType === 'metamask' ? 'MetaMask' : 
+                                  walletType === 'trustwallet' ? 'Trust Wallet' : 
+                                  'Coinbase Wallet';
+                showError(`Please install ${walletName} app and try again.`);
+            }
+        }, 2000);
+    }
+}
+
+// Check for wallet connection after redirect from wallet app
+function checkWalletConnectionAfterRedirect() {
+    const pendingConnection = localStorage.getItem('pendingWalletConnection');
+    if (pendingConnection === 'true') {
+        localStorage.removeItem('pendingWalletConnection');
+        // Wait a bit for wallet to inject after redirect
+        setTimeout(async () => {
+            const walletProvider = detectWalletProvider();
+            if (walletProvider) {
+                try {
+                    await connectWallet();
+                } catch (error) {
+                    console.error('Error connecting after redirect:', error);
+                }
+            }
+        }, 2000);
     }
 }

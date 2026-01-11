@@ -72,6 +72,29 @@
             Connect Wallet
         </button>
 
+        <!-- Mobile Wallet Selection Modal -->
+        <div class="modal" id="walletSelectModal" style="display: none;">
+            <div class="modal-content">
+                <span class="close" onclick="closeWalletSelectModal()">&times;</span>
+                <h2>🔗 Select Wallet</h2>
+                <p class="modal-subtitle">Choose your wallet to connect</p>
+                <div class="wallet-options">
+                    <button class="wallet-option-btn" onclick="openWalletApp('metamask')">
+                        <div class="wallet-option-icon">🦊</div>
+                        <div class="wallet-option-name">MetaMask</div>
+                    </button>
+                    <button class="wallet-option-btn" onclick="openWalletApp('trustwallet')">
+                        <div class="wallet-option-icon">🛡️</div>
+                        <div class="wallet-option-name">Trust Wallet</div>
+                    </button>
+                    <button class="wallet-option-btn" onclick="openWalletApp('coinbase')">
+                        <div class="wallet-option-icon">🔷</div>
+                        <div class="wallet-option-name">Coinbase Wallet</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div class="action-buttons" id="actionButtons" style="display: none;">
             <button class="btn btn-deposit" onclick="showDepositModal()">
                 💰 Deposit / Receive
