@@ -121,7 +121,19 @@ window.addEventListener('load', async () => {
             }
         }
         
-        const walletProvider = detectWalletProvider();
+        // Wait a bit for mobile wallets to inject (they often inject with delay)
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        let walletProvider = detectWalletProvider();
+        // Try a few more times for mobile wallets
+        if (!walletProvider) {
+            for (let i = 0; i < 3; i++) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                walletProvider = detectWalletProvider();
+                if (walletProvider) break;
+            }
+        }
+        
         if (walletProvider) {
             try {
                 const accounts = await walletProvider.request({ method: 'eth_accounts' });
@@ -292,15 +304,34 @@ async function connectWallet() {
 function detectWalletProvider() {
     // Check for various wallet providers
     if (typeof window.ethereum !== 'undefined') {
+        // Check if it's a specific wallet
+        if (window.ethereum.isMetaMask) {
+            return window.ethereum;
+        }
+        if (window.ethereum.isTrust || window.ethereum.isTrustWallet) {
+            return window.ethereum;
+        }
+        if (window.ethereum.isCoinbaseWallet) {
+            return window.ethereum;
+        }
+        // Check for other wallet identifiers
+        if (window.ethereum.providers && Array.isArray(window.ethereum.providers)) {
+            // Some wallets use providers array
+            return window.ethereum.providers[0] || window.ethereum;
+        }
+        // Generic ethereum provider
         return window.ethereum;
     }
     
-    // Check for Trust Wallet
+    // Check for Trust Wallet (mobile) - various injection methods
     if (window.trustwallet) {
         return window.trustwallet;
     }
+    if (window.ethereum && (window.ethereum.isTrust || window.ethereum.isTrustWallet)) {
+        return window.ethereum;
+    }
     
-    // Check for Coinbase Wallet
+    // Check for Coinbase Wallet extension
     if (window.coinbaseWalletExtension) {
         return window.coinbaseWalletExtension;
     }
@@ -310,7 +341,41 @@ function detectWalletProvider() {
         return window.web3.currentProvider;
     }
     
+    // Check for mobile wallet providers
+    if (window.BinanceChain) {
+        return window.BinanceChain;
+    }
+    
+    // Check for WalletConnect (if available)
+    if (window.WalletConnect && window.WalletConnect.defaultProvider) {
+        return window.WalletConnect.defaultProvider;
+    }
+    
     return null;
+}
+
+// Check if we're in a mobile wallet browser
+function isInMobileWalletBrowser() {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
+    
+    if (!isMobile) return false;
+    
+    // Check for wallet-specific indicators
+    if (window.ethereum) {
+        // Some mobile wallets inject ethereum
+        return true;
+    }
+    
+    // Check if we're in a wallet's in-app browser by checking referrer or other indicators
+    // Trust Wallet, MetaMask Mobile, etc. often have specific user agents or window properties
+    if (userAgent.includes('TrustWallet') || 
+        userAgent.includes('MetaMaskMobile') ||
+        userAgent.includes('CoinbaseWallet')) {
+        return true;
+    }
+    
+    return false;
 }
 
 async function connectEVMWallet() {
@@ -320,15 +385,31 @@ async function connectEVMWallet() {
         return;
     }
 
-    // Detect wallet provider
-    const walletProvider = detectWalletProvider();
+    // Detect wallet provider - try multiple times for mobile
+    let walletProvider = detectWalletProvider();
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    // On mobile, wallets often inject with significant delay - retry up to 10 times (3 seconds total)
+    if (!walletProvider && isMobile) {
+        for (let i = 0; i < 10; i++) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            walletProvider = detectWalletProvider();
+            if (walletProvider) {
+                console.log(`Wallet detected after ${i + 1} attempts`);
+                break;
+            }
+        }
+    }
     
     if (!walletProvider) {
-        // Check if we're on mobile
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const inWalletBrowser = isInMobileWalletBrowser();
         
         if (isMobile) {
-            showError('No Ethereum wallet detected. Please open this page in a wallet browser (MetaMask, Trust Wallet, Coinbase Wallet, etc.) or install a wallet extension.');
+            if (inWalletBrowser) {
+                showError('Wallet detected but connection failed. Please try:\n\n1. Refresh the page\n2. Ensure your wallet is unlocked\n3. Check wallet permissions');
+            } else {
+                showError('No wallet detected. To connect on mobile:\n\n📱 IMPORTANT: You must open this page IN your wallet app\'s browser, not in Chrome/Safari.\n\n1. Open your wallet app (MetaMask, Trust Wallet, etc.)\n2. Use the browser feature inside the wallet app\n3. Navigate to this page\n\nOr share this page URL and open it from your wallet app.');
+            }
         } else {
             showError('No Ethereum wallet detected. Please install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension.');
         }
