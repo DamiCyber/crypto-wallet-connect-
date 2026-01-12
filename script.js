@@ -317,53 +317,71 @@ async function connectWallet() {
 
 // Detect available wallet providers
 function detectWalletProvider() {
+    // Check for providers array first (some browsers have multiple wallets)
+    if (window.ethereum?.providers && Array.isArray(window.ethereum.providers) && window.ethereum.providers.length > 0) {
+        // Prefer MetaMask if available
+        const metamask = window.ethereum.providers.find(p => p.isMetaMask);
+        if (metamask) return metamask;
+        
+        // Otherwise use the first provider
+        const provider = window.ethereum.providers[0];
+        if (provider && typeof provider.request === 'function') {
+            return provider;
+        }
+    }
+    
     // Check for various wallet providers
     if (typeof window.ethereum !== 'undefined') {
-        // Check if it's a specific wallet
-        if (window.ethereum.isMetaMask) {
+        // Check if it has the required request method (EIP-1193 standard)
+        if (typeof window.ethereum.request === 'function') {
+            // Check if it's a specific wallet
+            if (window.ethereum.isMetaMask) {
+                return window.ethereum;
+            }
+            if (window.ethereum.isTrust || window.ethereum.isTrustWallet) {
+                return window.ethereum;
+            }
+            if (window.ethereum.isCoinbaseWallet) {
+                return window.ethereum;
+            }
+            // Generic ethereum provider (works for most wallets)
             return window.ethereum;
         }
-        if (window.ethereum.isTrust || window.ethereum.isTrustWallet) {
-            return window.ethereum;
-        }
-        if (window.ethereum.isCoinbaseWallet) {
-            return window.ethereum;
-        }
-        // Check for other wallet identifiers
-        if (window.ethereum.providers && Array.isArray(window.ethereum.providers)) {
-            // Some wallets use providers array
-            return window.ethereum.providers[0] || window.ethereum;
-        }
-        // Generic ethereum provider
-        return window.ethereum;
     }
     
     // Check for Trust Wallet (mobile) - various injection methods
-    if (window.trustwallet) {
+    if (window.trustwallet && typeof window.trustwallet.request === 'function') {
         return window.trustwallet;
-    }
-    if (window.ethereum && (window.ethereum.isTrust || window.ethereum.isTrustWallet)) {
-        return window.ethereum;
     }
     
     // Check for Coinbase Wallet extension
-    if (window.coinbaseWalletExtension) {
+    if (window.coinbaseWalletExtension && typeof window.coinbaseWalletExtension.request === 'function') {
         return window.coinbaseWalletExtension;
     }
     
     // Check for other common providers
-    if (window.web3 && window.web3.currentProvider) {
+    if (window.web3?.currentProvider && typeof window.web3.currentProvider.request === 'function') {
         return window.web3.currentProvider;
     }
     
     // Check for mobile wallet providers
-    if (window.BinanceChain) {
+    if (window.BinanceChain && typeof window.BinanceChain.request === 'function') {
         return window.BinanceChain;
     }
     
     // Check for WalletConnect (if available)
-    if (window.WalletConnect && window.WalletConnect.defaultProvider) {
+    if (window.WalletConnect?.defaultProvider && typeof window.WalletConnect.defaultProvider.request === 'function') {
         return window.WalletConnect.defaultProvider;
+    }
+    
+    // Check for Brave wallet
+    if (window.ethereum && window.ethereum.isBraveWallet) {
+        return window.ethereum;
+    }
+    
+    // Check for Opera wallet
+    if (window.ethereum && window.ethereum.isOpera) {
+        return window.ethereum;
     }
     
     return null;
@@ -404,13 +422,13 @@ async function connectEVMWallet() {
     let walletProvider = detectWalletProvider();
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    // Wallets often inject with delay - retry up to 10 times (3 seconds total) for both mobile and desktop
+    // Wallets often inject with delay - retry up to 15 times (7.5 seconds total) for both mobile and desktop
     if (!walletProvider) {
-        for (let i = 0; i < 10; i++) {
-            await new Promise(resolve => setTimeout(resolve, 300));
+        for (let i = 0; i < 15; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
             walletProvider = detectWalletProvider();
             if (walletProvider) {
-                console.log(`Wallet detected after ${i + 1} attempts`);
+                console.log(`[Wallet Detection] Wallet detected after ${i + 1} attempts`);
                 break;
             }
         }
@@ -419,17 +437,25 @@ async function connectEVMWallet() {
     if (!walletProvider) {
         const inWalletBrowser = isInMobileWalletBrowser();
         
+        // Enhanced debug info
+        const debugInfo = {
+            userAgent: navigator.userAgent,
+            ethereum: typeof window.ethereum,
+            ethereumIsDefined: typeof window.ethereum !== 'undefined',
+            ethereumHasRequest: window.ethereum && typeof window.ethereum.request === 'function',
+            ethereumIsMetaMask: window.ethereum?.isMetaMask,
+            ethereumProviders: window.ethereum?.providers ? window.ethereum.providers.length : 0,
+            trustwallet: typeof window.trustwallet,
+            coinbaseWalletExtension: typeof window.coinbaseWalletExtension,
+            web3: typeof window.web3,
+            BinanceChain: typeof window.BinanceChain
+        };
+        
         if (isMobile) {
             if (inWalletBrowser) {
                 const errorMsg = 'Wallet detected but connection failed. Please try:\n\n1. Refresh the page\n2. Ensure your wallet is unlocked\n3. Check wallet permissions';
                 console.error('[Mobile Wallet Error]', errorMsg);
-                console.error('[Debug Info]', {
-                    userAgent: navigator.userAgent,
-                    ethereum: typeof window.ethereum,
-                    trustwallet: typeof window.trustwallet,
-                    coinbaseWalletExtension: typeof window.coinbaseWalletExtension,
-                    web3: typeof window.web3
-                });
+                console.error('[Debug Info]', debugInfo);
                 showError(errorMsg);
             } else {
                 // Show wallet selection modal for mobile (deep link to wallet apps)
@@ -437,18 +463,30 @@ async function connectEVMWallet() {
                 showWalletSelectModal();
             }
         } else {
-            // Desktop - same retry logic applied
-            const errorMsg = 'No Ethereum wallet detected. Please:\n\n1. Install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension\n2. Refresh the page after installing\n3. Ensure your wallet extension is enabled in your browser';
+            // Desktop - provide more helpful error message
+            let errorMsg = 'No Ethereum wallet detected. Please:\n\n1. Install MetaMask, Trust Wallet, Coinbase Wallet, or another compatible wallet extension\n2. Refresh the page after installing\n3. Ensure your wallet extension is enabled in your browser';
+            
+            // Provide specific guidance if ethereum object exists but doesn't have request method
+            if (debugInfo.ethereumIsDefined && !debugInfo.ethereumHasRequest) {
+                errorMsg += '\n\nNote: A wallet object was detected but it may not be fully initialized. Try refreshing the page.';
+            }
+            
             console.error('[Desktop Wallet Error]', errorMsg);
-            console.error('[Debug Info]', {
-                userAgent: navigator.userAgent,
-                ethereum: typeof window.ethereum,
-                trustwallet: typeof window.trustwallet,
-                coinbaseWalletExtension: typeof window.coinbaseWalletExtension,
-                web3: typeof window.web3
-            });
+            console.error('[Debug Info]', debugInfo);
             showError(errorMsg);
         }
+        return;
+    }
+
+    // Verify the provider is functional
+    try {
+        // Test if provider is ready by checking if it responds
+        if (typeof walletProvider.request !== 'function') {
+            throw new Error('Wallet provider does not support EIP-1193 standard');
+        }
+    } catch (error) {
+        console.error('Wallet provider verification failed:', error);
+        showError('Detected wallet is not compatible. Please try a different wallet or refresh the page.');
         return;
     }
 
@@ -589,8 +627,54 @@ async function disconnectWallet() {
         if (isSolana && solanaWallet) {
             // Disconnect Solana wallet
             await solanaWallet.disconnect();
+        } else if (provider) {
+            // Disconnect EVM wallet
+            const walletProvider = detectWalletProvider();
+            
+            if (walletProvider) {
+                try {
+                    // Try to revoke permissions (EIP-2255) - supported by MetaMask and some other wallets
+                    if (walletProvider.request && typeof walletProvider.request === 'function') {
+                        try {
+                            await walletProvider.request({
+                                method: 'wallet_revokePermissions',
+                                params: [{
+                                    eth_accounts: {}
+                                }]
+                            });
+                            console.log('Wallet permissions revoked');
+                        } catch (revokeError) {
+                            // Not all wallets support wallet_revokePermissions, that's okay
+                            console.log('wallet_revokePermissions not supported, trying alternative methods');
+                        }
+                    }
+                    
+                    // Try to disconnect if the provider has a disconnect method (some wallets support this)
+                    if (walletProvider.disconnect && typeof walletProvider.disconnect === 'function') {
+                        try {
+                            await walletProvider.disconnect();
+                            console.log('Wallet disconnected');
+                        } catch (disconnectError) {
+                            // Not all wallets support disconnect method, that's okay
+                            console.log('disconnect method not supported');
+                        }
+                    }
+                    
+                    // Try to remove listeners if they exist
+                    if (walletProvider.removeAllListeners && typeof walletProvider.removeAllListeners === 'function') {
+                        try {
+                            walletProvider.removeAllListeners('accountsChanged');
+                            walletProvider.removeAllListeners('chainChanged');
+                        } catch (listenerError) {
+                            // Ignore listener removal errors
+                        }
+                    }
+                } catch (error) {
+                    console.log('Error during wallet disconnect:', error);
+                    // Continue with local state cleanup even if provider disconnect fails
+                }
+            }
         }
-        // For EVM wallets, we just clear local state without revoking permissions
     } catch (error) {
         console.error('Error during wallet disconnect:', error);
         // Continue with local state cleanup even if provider disconnect fails
